@@ -96,7 +96,8 @@ public class Dispatcher {
             return response;
           });
     } catch (RuntimeException | Error e) {
-      logger.trace("Unexpected error while processing request", e);
+      logger.trace(
+          "Unexpected error while processing request on connection {}", connection.randomId, e);
       throw e;
     }
   }
@@ -128,6 +129,7 @@ public class Dispatcher {
           });
       Message.logger.trace("Responding: {}, v={}", response, connection.getVersion());
     } catch (Throwable t) {
+      Message.logger.error("Caught throwable when processing request? This leaks resources... ", t);
       // Cassandra {4.0.10} Patched as per stargate
       // JVMStabilityInspector.inspectThrowable(t);
     } finally {

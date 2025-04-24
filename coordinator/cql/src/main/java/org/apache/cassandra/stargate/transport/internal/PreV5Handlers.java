@@ -134,6 +134,7 @@ public class PreV5Handlers {
 
       // check for overloaded state by trying to allocate the message size from inflight payload
       // trackers
+      logger.info("ZUPA: payload tracker: {}", endpointPayloadTracker);
       if (endpointPayloadTracker.tryAllocate(requestSize) != ResourceLimits.Outcome.SUCCESS) {
         if (request.connection.isThrowOnOverload()) {
           // discard the request and throw an exception

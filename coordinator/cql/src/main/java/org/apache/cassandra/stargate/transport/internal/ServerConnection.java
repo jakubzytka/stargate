@@ -25,6 +25,8 @@ import io.stargate.db.Authenticator;
 import io.stargate.db.ClientInfo;
 import io.stargate.db.Persistence;
 import java.net.InetSocketAddress;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.security.cert.X509Certificate;
 import org.apache.cassandra.stargate.metrics.ClientMetrics;
@@ -42,6 +44,15 @@ public class ServerConnection extends Connection {
   private final AuthenticationService authentication;
   private volatile ConnectionStage stage;
   public final Counter requests = new Counter();
+  private static final AtomicInteger globalRequestsCounter = new AtomicInteger();
+  public final int randomId = ThreadLocalRandom.current().nextInt();
+
+  private static final int UNLUCKY_CONNECTION_PERCENTAGE =
+      Integer.getInteger("stargate.unlucky_connection_percentage", 100);
+  private static final int UNLUCKY_CONNECTION_DELAY =
+      Integer.getInteger("stargate.unlucky_connection_delay", 2000);
+  private static final int EXCEPTION_PERIOD_IN_REQUESTS =
+      Integer.getInteger("stargate.exception_period_in_requests", 1000);
 
   ServerConnection(
       Channel channel,
@@ -99,6 +110,7 @@ public class ServerConnection extends Connection {
   }
 
   void validateNewMessage(Message.Type type, ProtocolVersion version) {
+    logger.info("ZUPA Connection={}; handling message", randomId);
     switch (stage) {
       case ESTABLISHED:
         if (type != Message.Type.STARTUP && type != Message.Type.OPTIONS)
@@ -114,6 +126,17 @@ public class ServerConnection extends Connection {
                   type, version == ProtocolVersion.V1 ? "CREDENTIALS" : "SASL_RESPONSE"));
         break;
       case READY:
+        int globalRequestIdx = globalRequestsCounter.incrementAndGet();
+        if (requests.getCount() > UNLUCKY_CONNECTION_DELAY
+            && globalRequestIdx % EXCEPTION_PERIOD_IN_REQUESTS == 0) {
+          if (randomId % 100 < UNLUCKY_CONNECTION_PERCENTAGE) {
+            logger.error("ZUPA Connection={} Injecting fake exception", randomId);
+            throw new ProtocolException("injected fake exception on connection " + randomId);
+          } else {
+            logger.info(
+                "ZUPA Connection={} not injecting fake exception; connection is lucky", randomId);
+          }
+        }
         if (type == Message.Type.STARTUP)
           throw new ProtocolException(
               "Unexpected message STARTUP, the connection is already initialized");
